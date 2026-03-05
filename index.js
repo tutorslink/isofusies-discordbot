@@ -817,7 +817,15 @@ async function registerCommands() {
         { name: 'title', type: 3, required: true, description: 'Recording title' }
       ], default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
-    { name: 'authentication', description: 'Generate authentication code for webapp access (staff only)', default_member_permissions: PermissionFlagsBits.ManageMessages.toString() }
+    { name: 'authentication', description: 'Generate authentication code for webapp access (staff only)', default_member_permissions: PermissionFlagsBits.ManageMessages.toString() },
+    {
+      name: 'migrateads',
+      description: 'Re-post all existing ads into their category channels with a short version (staff only)',
+      options: [
+        { name: 'force', description: 'Re-post even if a category message already exists', type: 5, required: false }
+      ],
+      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
+    }
   ];
 
   const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
@@ -3443,7 +3451,7 @@ if (cmd === 'createad') {
 
       if (cmd === 'staffhelp') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can access this.', ephemeral: true });
-        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list\n/tutor add/remove/list/info\n/createad\n/editad\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove\n/reviewreminder`, ephemeral: true });
+        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list\n/tutor add/remove/list/info\n/createad\n/editad\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true });
       }
 
       // bumpleaderboard command
@@ -3520,6 +3528,72 @@ if (cmd === 'createad') {
         db.reviewConfig.delaySeconds = Math.max(1, Math.floor(seconds));
         saveDB();
         return interaction.reply({ content: `Review reminder set to ${db.reviewConfig.delaySeconds} second(s).`, ephemeral: true });
+      }
+
+      if (cmd === 'migrateads') {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can run ad migration.', ephemeral: true });
+        const force = interaction.options.getBoolean('force') || false;
+
+        const MIGRATE_MAX_DESCRIPTION_LINES = 4;
+        const MIGRATE_RATE_LIMIT_DELAY_MS = 1000;
+
+        await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+        const allAds = Object.entries(db.createAds || {});
+        const toMigrate = force
+          ? allAds
+          : allAds.filter(([, data]) => !data.categoryMessageId);
+
+        if (toMigrate.length === 0) {
+          return interaction.editReply({ content: force ? 'No ads found in the database.' : 'All ads already have a category message. Use `force:true` to re-post.' });
+        }
+
+        await interaction.editReply({ content: `Migrating ${toMigrate.length} ad(s)… please wait.` });
+
+        let migrated = 0;
+        let skipped = 0;
+        const errors = [];
+
+        for (const [messageId, adData] of toMigrate) {
+          try {
+            const subject = adData.embed && adData.embed.title ? adData.embed.title : null;
+            const levelKey = adData.level || 'other';
+            const tutorId = adData.tutorId || null;
+            const embedDescription = adData.embed && adData.embed.description ? adData.embed.description : '';
+
+            if (!subject) { skipped++; continue; }
+
+            const categoryCh = await findSubjectChannel(interaction.guild, levelKey, subject).catch(() => null);
+            if (!categoryCh) { skipped++; continue; }
+
+            const shortContent = [
+              `**${subject}**`,
+              tutorId ? `Tutor: <@${tutorId}>` : null,
+              embedDescription ? embedDescription.split('\n').slice(0, MIGRATE_MAX_DESCRIPTION_LINES).join('\n') : null,
+              FIND_A_TUTOR_CHANNEL_ID ? `*See full ad in <#${FIND_A_TUTOR_CHANNEL_ID}>*` : null
+            ].filter(Boolean).join('\n');
+
+            const sent = await categoryCh.send({ content: shortContent }).catch(() => null);
+            if (sent) {
+              db.createAds[messageId].categoryChannelId = categoryCh.id;
+              db.createAds[messageId].categoryMessageId = sent.id;
+              saveDB();
+              migrated++;
+            } else {
+              skipped++;
+            }
+
+            // Small delay to respect Discord rate limits
+            await new Promise(resolve => setTimeout(resolve, MIGRATE_RATE_LIMIT_DELAY_MS));
+          } catch (e) {
+            console.warn('migrateads: error migrating ad', messageId, e);
+            errors.push(messageId);
+          }
+        }
+
+        const summary = [`Migration complete!`, `✅ Migrated: ${migrated}`, `⏭️ Skipped: ${skipped}`];
+        if (errors.length > 0) summary.push(`❌ Errors: ${errors.length} (check logs)`);
+        return interaction.editReply({ content: summary.join('\n') });
       }
     }
   } catch (err) {
