@@ -126,7 +126,8 @@ let db = {
   tickets: {},
   cooldowns: {},
   sticky: null, // { title, body, color, messageId }
-  createAds: {}, // map messageId -> { channelId, embed }
+  createAds: {}, // map messageId -> { channelId, embed, adCode, tutorId, level, ... }
+  nextAdCodes: {}, // map levelKey -> next serial number (e.g. { igcse: 3, a_level: 1 })
   defaultEmbedColor: null,
   // Review system
   tutorProfiles: {}, // tutorId -> { addedAt, students: [userId,...], reviews: [], rating: {count,avg} }
@@ -160,6 +161,53 @@ function normalizeCreateAdLevelKey(raw) {
   if (v === 'below igcse' || v === 'below_igcse' || v === 'below-igcse') return 'below_igcse';
   if (v === 'language' || v === 'lang') return 'language';
   return null;
+}
+
+// Short prefix used in ad codes for each level (e.g. "IG-1", "AL-2")
+const AD_CODE_PREFIXES = {
+  igcse:       'IG',
+  a_level:     'AL',
+  university:  'Uni',
+  below_igcse: 'Bel',
+  language:    'Lang',
+  other:       'Other',
+};
+
+/**
+ * Generates a unique ad code for the given level key, e.g. "IG-1", "AL-3".
+ * Increments the per-level counter in db.nextAdCodes and saves the DB.
+ */
+function generateAdCode(levelKey) {
+  const key = levelKey || 'other';
+  if (!db.nextAdCodes) db.nextAdCodes = {};
+  const current = (db.nextAdCodes[key] || 0) + 1;
+  db.nextAdCodes[key] = current;
+  const prefix = AD_CODE_PREFIXES[key] || 'Ad';
+  return `${prefix}-${current}`;
+}
+
+/**
+ * Resolves an ad code (e.g. "IG-1") to the associated tutor user ID, or null
+ * if no matching ad is found.
+ */
+function resolveAdCodeToTutorId(code) {
+  if (!code || !db.createAds) return null;
+  const normalised = String(code).trim().toUpperCase();
+  for (const data of Object.values(db.createAds)) {
+    if (data.adCode && String(data.adCode).toUpperCase() === normalised) {
+      return data.tutorId || null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Returns true if the given string looks like an ad code (known prefix + dash + digits).
+ * Discord user IDs are purely numeric, so this safely distinguishes ad codes from user IDs.
+ */
+function isAdCode(value) {
+  const knownPrefixes = Object.values(AD_CODE_PREFIXES).join('|');
+  return new RegExp(`^(?:${knownPrefixes})-\\d+$`, 'i').test(String(value || '').trim());
 }
 
 /**
@@ -831,7 +879,7 @@ async function registerCommands() {
       description: 'Manage tutor user IDs or view info',
       options: [
         { name: 'action', description: 'add, remove, list, info, or notes', type: 3, required: true, choices: [{ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }, { name: 'list', value: 'list' }, { name: 'info', value: 'info' }, { name: 'notes', value: 'notes' }] },
-        { name: 'userid', description: 'User ID for add/remove/info/notes', type: 3, required: false },
+        { name: 'userid', description: 'User ID or ad code (e.g. IG-1) for info/notes, User ID for add/remove', type: 3, required: false },
         { name: 'subject', description: 'Subject for mapping', type: 3, required: false }
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
@@ -987,6 +1035,8 @@ client.on('interactionCreate', async (interaction) => {
           .setTitle(`${subject} - Full Details`)
           .setDescription(detailsMessage)
           .setTimestamp();
+        
+        if (adData.adCode) detailsEmbed.setFooter({ text: `Ad Code: ${adData.adCode}` });
         
         if (adData.embed && adData.embed.color) {
           try { detailsEmbed.setColor(adData.embed.color); } catch (e) {}
@@ -1780,6 +1830,9 @@ client.on('interactionCreate', async (interaction) => {
             message += `**Languages:** ${languages}\n\n`;
             message += `Click "View Full Details" below for more information, or "Talk to Tutors!" to start a conversation.`;
 
+            // Generate a unique ad code (e.g. IG-1, AL-3) for this ad
+            const adCode = generateAdCode(levelKey);
+
             // Store full details for ephemeral message
             const fullDetailsMessage = {
               subjectLevel,
@@ -1795,7 +1848,7 @@ client.on('interactionCreate', async (interaction) => {
               paymentTerms
             };
 
-            const embed = new EmbedBuilder().setTitle(subject).setDescription(message).setTimestamp();
+            const embed = new EmbedBuilder().setTitle(subject).setDescription(message).setTimestamp().setFooter({ text: `Ad Code: ${adCode}` });
             if (colorVal) embed.setColor(colorVal);
             else if (db.defaultEmbedColor) {
                 try { embed.setColor(db.defaultEmbedColor); } catch (e) {}
@@ -1836,6 +1889,7 @@ client.on('interactionCreate', async (interaction) => {
                     embed: { title: subject, description: message, color: colorVal || db.defaultEmbedColor },
                     tutorId: selectedTutorId,
                     level: levelKey,
+                    adCode,
                     categoryChannelId: categoryCh ? categoryCh.id : null,
                     categoryMessageId: categorySent ? categorySent.id : null,
                     fullDetails: fullDetailsMessage
@@ -2388,6 +2442,7 @@ client.on('interactionCreate', async (interaction) => {
             const arr = db.subjectTutors[s] || [];
             if (arr.includes(userid)) subjects.push(s);
           }
+          const adCodesList = Object.values(db.createAds || {}).filter(a => a.tutorId === userid && a.adCode).map(a => a.adCode);
           const profile = db.tutorProfiles[userid] || { addedAt: null, students: [], reviews: [], rating: { count: 0, avg: 0 } };
           const addedAt = profile && profile.addedAt ? `<t:${Math.floor(profile.addedAt/1000)}:f>` : '(unknown)';
           let userTag = '(not in guild)';
@@ -2408,6 +2463,7 @@ client.on('interactionCreate', async (interaction) => {
           const notes = profile.notes || '(no notes)';
           const lines = [
             `Tutor info for: ${userTag} (${userid})`,
+            `Ad code(s): ${adCodesList.length ? adCodesList.join(', ') : '(none)'}`,
             `Guild joined: ${joined}`,
             `Tutor added at: ${addedAt}`,
             `Subjects: ${subjects.length ? subjects.join(', ') : '(none)'}`,
@@ -2990,17 +3046,28 @@ if (cmd === 'close') {
                 if (m) { label = m.user.username; desc = `(${m.user.tag})`; }
                 else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } }
               } catch (e) {}
+              // Show ad code(s) for this tutor if available
+              const tutorAdCodes = Object.values(db.createAds || {}).filter(a => a.tutorId === tid && a.adCode).map(a => a.adCode);
+              if (tutorAdCodes.length) desc = `${tutorAdCodes.join(', ')}${desc ? ' · ' + desc : ''}`;
               options.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
             }
             const select = new StringSelectMenuBuilder().setCustomId('tutor_select|info').setPlaceholder('Select a tutor to view info').addOptions(options);
             return interaction.reply({ content: 'Select a tutor to view info:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
           }
-          const userid = String(useridRaw);
+          // Resolve ad code to tutor ID if an ad code was provided
+          let userid = String(useridRaw);
+          if (isAdCode(userid)) {
+            const resolved = resolveAdCodeToTutorId(userid);
+            if (!resolved) return interaction.reply({ content: `No ad found with code **${userid}**. Please check the code and try again.`, ephemeral: true });
+            userid = resolved;
+          }
           const subjects = [];
           for (const s of db.subjects) {
             const arr = db.subjectTutors[s] || [];
             if (arr.includes(userid)) subjects.push(s);
           }
+          // Find ad codes linked to this tutor
+          const adCodesList = Object.values(db.createAds || {}).filter(a => a.tutorId === userid && a.adCode).map(a => a.adCode);
           const profile = db.tutorProfiles[userid] || { addedAt: null, students: [], reviews: [], rating: { count: 0, avg: 0 } };
           const addedAt = profile && profile.addedAt ? `<t:${Math.floor(profile.addedAt/1000)}:f>` : '(unknown)';
           let userTag = '(not in guild)';
@@ -3020,6 +3087,7 @@ if (cmd === 'close') {
           const notes = profile.notes || '(no notes)';
           const lines = [
             `Tutor info for: ${userTag} (ID: ${userid})`,
+            `Ad code(s): ${adCodesList.length ? adCodesList.join(', ') : '(none)'}`,
             `Guild joined: ${joined}`,
             `Tutor added at: ${addedAt}`,
             `Subjects: ${subjects.length ? subjects.join(', ') : '(none)'}`,
