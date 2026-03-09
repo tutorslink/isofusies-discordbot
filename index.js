@@ -1,4 +1,4 @@
-**
+/**
  * index.js
  * Ticket-matchmaker main file
  * Node 20+, discord.js v14
