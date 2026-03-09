@@ -47,8 +47,9 @@ const CREATEAD_LEVEL_CONFIG = {
   igcse:       { categoryName: 'IGCSE Tutors',       prefix: 'ig-' },
   a_level:     { categoryName: 'AS/A Level Tutors',  prefix: 'asl-al-' },
   below_igcse: { categoryName: 'Below IGCSE Tutors', prefix: '' },
-  university:  { categoryName: 'University Tutors',  prefix: '' },
-  language:    { categoryName: 'Language Tutors',    prefix: '' },
+  university:  { categoryName: 'University Tutors',  prefix: 'uni-' },
+  language:    { categoryName: 'Language Tutors',    prefix: 'lang-' },
+  test_prep:   { categoryName: 'Test Prep Tutors',   prefix: 'testprep-' },
   other:       { categoryName: 'Other Tutors',       prefix: '' },
 };
 
@@ -76,6 +77,7 @@ function detectLevelFromSubject(subjectName) {
   if (/^(below\s+igcse|below-igcse|below_igcse)/.test(s)) return 'below_igcse';
   if (/^university/.test(s)) return 'university';
   if (/^language/.test(s)) return 'language';
+  if (/^test\s*prep/.test(s)) return 'test_prep';
   return null;
 }
 
@@ -106,7 +108,7 @@ async function findSubjectChannel(guild, levelKey, subjectName) {
 
     // Normalise subject: strip known level prefixes, lowercase, spaces→hyphens
     const bare = subjectName
-      .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language)\s+/i, '')
+      .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language|test\s*prep)\s+/i, '')
       .toLowerCase()
       .replace(/\s+/g, '-');
 

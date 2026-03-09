@@ -104,8 +104,9 @@ const CREATEAD_LEVEL_CONFIG = {
   // 'asl-al-' is the server-defined prefix for A-Level subject channels (e.g. asl-al-maths)
   a_level:     { categoryName: 'AS/A Level Tutors',  prefix: 'asl-al-' },
   below_igcse: { categoryName: 'Below IGCSE Tutors', prefix: '' },
-  university:  { categoryName: 'University Tutors',  prefix: '' },
-  language:    { categoryName: 'Language Tutors',    prefix: '' },
+  university:  { categoryName: 'University Tutors',  prefix: 'uni-' },
+  language:    { categoryName: 'Language Tutors',    prefix: 'lang-' },
+  test_prep:   { categoryName: 'Test Prep Tutors',   prefix: 'testprep-' },
   other:       { categoryName: 'Other Tutors',       prefix: '' },
 };
 const CREATEAD_LEVEL_LABELS = {
@@ -114,6 +115,7 @@ const CREATEAD_LEVEL_LABELS = {
   igcse: 'IGCSE',
   below_igcse: 'Below IGCSE',
   language: 'Language',
+  test_prep: 'Test Prep',
   other: 'Other'
 };
 
@@ -121,6 +123,7 @@ const DATA_FILE = './data.json';
 let db = {
   nextTicketId: 1,
   subjects: ['IGCSE Accounting', 'IGCSE Maths', 'IGCSE Add Maths'],
+  subjectLevels: {}, // map subjectName -> levelKey (e.g. { 'IGCSE/GCSE Maths': 'igcse' })
   subjectTutors: { 'IGCSE Maths': ['742420325559435375', '873095080938975232'] }, // tutor user ids
   initMessage: 'Hello, thanks for requesting a tutor for **{subject}**. Please tell us your topic, availability, timezone. Do not post contact info.',
   tickets: {},
@@ -160,6 +163,7 @@ function normalizeCreateAdLevelKey(raw) {
   if (v === 'a level' || v === 'alevel' || v === 'a-level') return 'a_level';
   if (v === 'below igcse' || v === 'below_igcse' || v === 'below-igcse') return 'below_igcse';
   if (v === 'language' || v === 'lang') return 'language';
+  if (v === 'test prep' || v === 'test_prep' || v === 'testprep' || v === 'tp') return 'test_prep';
   return null;
 }
 
@@ -170,6 +174,7 @@ const AD_CODE_PREFIXES = {
   university:  'Uni',
   below_igcse: 'Bel',
   language:    'Lang',
+  test_prep:   'TP',
   other:       'Other',
 };
 
@@ -222,6 +227,7 @@ function detectLevelFromSubject(subjectName) {
   if (/^(below\s+igcse|below-igcse|below_igcse)/.test(s)) return 'below_igcse';
   if (/^university/.test(s)) return 'university';
   if (/^language/.test(s)) return 'language';
+  if (/^test\s*prep/.test(s)) return 'test_prep';
   return null;
 }
 
@@ -230,13 +236,16 @@ function detectLevelFromSubject(subjectName) {
  * given level.  If a matching channel is found, grants ViewChannel to @everyone
  * to make it public.  Returns the channel object, or null if not found.
  *
+ * When createIfMissing is true and no existing channel is found, a new text
+ * channel (and category if needed) will be created using the level's prefix.
+ *
  * Fallback strategy (tried in order):
  *  1. prefix + bare name in the configured category        (e.g. ig-maths)
  *  2. bare name only in the configured category            (e.g. mandarin-chinese)
  *  3. Re-detect level from subject name and retry 1 & 2   (handles missing level field)
  *  4. Try every other level config                         (last resort)
  */
-async function findSubjectChannel(guild, levelKey, subjectName) {
+async function findSubjectChannel(guild, levelKey, subjectName, createIfMissing = false) {
   // Inner helper: search one level config for the channel
   const tryLevel = (key) => {
     const config = CREATEAD_LEVEL_CONFIG[key];
@@ -253,7 +262,7 @@ async function findSubjectChannel(guild, levelKey, subjectName) {
 
     // Normalise subject: strip known level prefixes, lowercase, spaces→hyphens
     const bare = subjectName
-      .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language)\s+/i, '')
+      .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language|test\s*prep)\s+/i, '')
       .toLowerCase()
       .replace(/\s+/g, '-');
 
@@ -295,6 +304,50 @@ async function findSubjectChannel(guild, levelKey, subjectName) {
       if (k === levelKey) continue;
       channel = tryLevel(k);
       if (channel) break;
+    }
+  }
+
+  // 4. If still not found and createIfMissing is requested, create the channel
+  if (!channel && createIfMissing) {
+    const config = CREATEAD_LEVEL_CONFIG[levelKey];
+    if (config) {
+      try {
+        // Find or create the category
+        let category = guild.channels.cache.find(
+          c => c.type === ChannelType.GuildCategory &&
+               c.name.toLowerCase() === config.categoryName.toLowerCase()
+        );
+        if (!category) {
+          category = await guild.channels.create({
+            name: config.categoryName,
+            type: ChannelType.GuildCategory,
+          });
+          console.log(`findSubjectChannel: created category "${config.categoryName}"`);
+        }
+
+        // Normalise subject name → channel name
+        const bare = subjectName
+          .replace(/^(igcse\/gcse|igcse\/o-level|igcse|as\/al|as\/a\s+level|a\s+level|a-level|below\s+igcse|below_igcse|university|language|test\s*prep)\s+/i, '')
+          .toLowerCase()
+          .replace(/\s+/g, '-')
+          .replace(/[^a-z0-9-]/g, '')  // strip Discord-invalid chars
+          .replace(/-{2,}/g, '-')      // collapse multiple hyphens
+          .replace(/^-|-$/g, '');      // trim leading/trailing hyphens
+
+        const channelName = (config.prefix + bare).substring(0, 100);
+
+        channel = await guild.channels.create({
+          name: channelName,
+          type: ChannelType.GuildText,
+          parent: category.id,
+          permissionOverwrites: [
+            { id: guild.roles.everyone, allow: [PermissionFlagsBits.ViewChannel] },
+          ],
+        });
+        console.log(`findSubjectChannel: created channel "#${channelName}" under "${config.categoryName}"`);
+      } catch (e) {
+        console.warn('findSubjectChannel: failed to create channel', e);
+      }
     }
   }
 
@@ -870,7 +923,8 @@ async function registerCommands() {
       description: 'Manage subjects (staff add/remove/list)',
       options: [
         { name: 'action', description: 'add, remove, or list', type: 3, required: true, choices: [{ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }, { name: 'list', value: 'list' }] },
-        { name: 'subject', description: 'Subject name for add/remove', type: 3, required: false }
+        { name: 'subject', description: 'Subject name for add/remove', type: 3, required: false },
+        { name: 'level', description: 'Level for the subject (igcse, a_level, university, language, test_prep, other)', type: 3, required: false }
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
@@ -936,7 +990,15 @@ async function registerCommands() {
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
-    { name: 'exportchannels', description: 'Export all guild categories and channels as JSON (staff only)', default_member_permissions: PermissionFlagsBits.ManageMessages.toString() }
+    { name: 'exportchannels', description: 'Export all guild categories and channels as JSON (staff only)', default_member_permissions: PermissionFlagsBits.ManageMessages.toString() },
+    {
+      name: 'seedsubjects',
+      description: 'Seed IGCSE/GCSE and AS/AL subjects from the predefined channel list (staff only, idempotent)',
+      options: [
+        { name: 'dryrun', description: 'If true, show what would be added without saving', type: 5, required: false }
+      ],
+      default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
+    }
   ];
 
   const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
@@ -1139,7 +1201,25 @@ client.on('interactionCreate', async (interaction) => {
             tutorOptions.push(opt);
           }
 
-          const subjectOptions = (db.subjects || []).slice(0, 25).map(s => new StringSelectMenuOptionBuilder().setLabel(clampLabel(s, 100)).setValue(s.substring(0, 100)).setDescription(clampLabel(`Select ${s}`, 50)));
+          // Build subject options filtered by the selected level and sorted alphabetically.
+          // Subjects without a stored level entry fall back to detectLevelFromSubject.
+          const allSubjects = db.subjects || [];
+          const filteredSubjects = allSubjects.filter(s => {
+            const storedLevel = db.subjectLevels && db.subjectLevels[s];
+            const effectiveLevel = storedLevel || detectLevelFromSubject(s) || 'other';
+            return effectiveLevel === levelKey;
+          });
+          // If no filtered subjects found (e.g. no subjects assigned to this level yet),
+          // fall back to showing all subjects so the modal remains usable.
+          const subjectsForLevel = filteredSubjects.length > 0 ? filteredSubjects : allSubjects;
+          const subjectOptions = subjectsForLevel
+            .slice()
+            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+            .slice(0, 25)
+            .map(s => new StringSelectMenuOptionBuilder().setLabel(clampLabel(s, 100)).setValue(s.substring(0, 100)).setDescription(clampLabel(`Select ${s}`, 50)));
+          if (subjectOptions.length === 0) {
+            return interaction.reply({ content: 'No subjects available for this level. Add subjects first with `/subject add`.', ephemeral: true }).catch(() => {});
+          }
           const subjectSelect = new StringSelectMenuBuilder().setCustomId('ad_subject').setPlaceholder('Select a subject').addOptions(subjectOptions).setRequired(true);
           const subjectLabel = new LabelBuilder().setLabel(clampLabel('Subject')).setStringSelectMenuComponent(subjectSelect);
           const tutorSelect = new StringSelectMenuBuilder().setCustomId('ad_tutor').setPlaceholder('Select a tutor (optional)').addOptions(tutorOptions);
@@ -1869,11 +1949,12 @@ client.on('interactionCreate', async (interaction) => {
                 return null; 
             });
             
-            // Also post to the discovered subject channel within the matching category
+            // Also post to the discovered (or newly created) subject channel within the matching category.
+            // createIfMissing=true ensures university/language/test_prep channels are auto-created.
             let categorySent = null;
             let categoryCh = null;
             try {
-                categoryCh = await findSubjectChannel(interaction.guild, levelKey, subject);
+                categoryCh = await findSubjectChannel(interaction.guild, levelKey, subject, true);
                 if (categoryCh) {
                     categorySent = await categoryCh.send({ content: messageContent, embeds: [embed], components: [row] }).catch(() => null);
                 }
@@ -2395,6 +2476,7 @@ client.on('interactionCreate', async (interaction) => {
           new StringSelectMenuOptionBuilder().setLabel('IGCSE').setValue('igcse'),
           new StringSelectMenuOptionBuilder().setLabel('Below IGCSE').setValue('below_igcse'),
           new StringSelectMenuOptionBuilder().setLabel('Language').setValue('language'),
+          new StringSelectMenuOptionBuilder().setLabel('Test Prep').setValue('test_prep'),
           new StringSelectMenuOptionBuilder().setLabel('Other').setValue('other')
         ].map(opt => {
           try { if (opt.data?.value === levelKey) opt.setDefault(true); } catch (e) {}
@@ -3010,17 +3092,35 @@ if (cmd === 'close') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can manage subjects.', ephemeral: true });
         const action = interaction.options.getString('action', true);
         const subj = interaction.options.getString('subject', false);
+        const levelRaw = interaction.options.getString('level', false);
         if (action === 'add') {
           if (!subj) return interaction.reply({ content: 'Provide subject text to add.', ephemeral: true });
           if (db.subjects.includes(subj)) return interaction.reply({ content: 'Subject already exists.', ephemeral: true });
-          db.subjects.push(subj); saveDB(); await registerCommands();
-          return interaction.reply({ content: `Subject added: ${subj}`, ephemeral: true });
+          db.subjects.push(subj);
+          if (levelRaw) {
+            const levelKey = normalizeCreateAdLevelKey(levelRaw) || detectLevelFromSubject(subj);
+            if (levelKey) {
+              if (!db.subjectLevels) db.subjectLevels = {};
+              db.subjectLevels[subj] = levelKey;
+            }
+          }
+          saveDB(); await registerCommands();
+          const levelKey = (db.subjectLevels && db.subjectLevels[subj]) || detectLevelFromSubject(subj);
+          return interaction.reply({ content: `Subject added: ${subj}${levelKey ? ` (level: ${levelKey})` : ' (no level set — use the level option to filter by level)'}`, ephemeral: true });
         } else if (action === 'remove') {
           if (!subj) return interaction.reply({ content: 'Provide subject text to remove.', ephemeral: true });
-          db.subjects = db.subjects.filter(s => s !== subj); delete db.subjectTutors[subj]; saveDB(); await registerCommands();
+          db.subjects = db.subjects.filter(s => s !== subj);
+          delete db.subjectTutors[subj];
+          if (db.subjectLevels) delete db.subjectLevels[subj];
+          saveDB(); await registerCommands();
           return interaction.reply({ content: `Subject removed: ${subj}`, ephemeral: true });
         } else {
-          return interaction.reply({ content: `Subjects:\n${db.subjects.join('\n')}`, ephemeral: true });
+          if (!db.subjects || db.subjects.length === 0) return interaction.reply({ content: 'No subjects found.', ephemeral: true });
+          const lines = db.subjects.map(s => {
+            const lvl = (db.subjectLevels && db.subjectLevels[s]) || detectLevelFromSubject(s) || '(no level)';
+            return `${s} [${lvl}]`;
+          });
+          return interaction.reply({ content: `Subjects (${lines.length}):\n${lines.join('\n')}`, ephemeral: true });
         }
       }
 
@@ -3393,6 +3493,7 @@ if (cmd === 'createad') {
       new StringSelectMenuOptionBuilder().setLabel('IGCSE').setValue('igcse'),
       new StringSelectMenuOptionBuilder().setLabel('Below IGCSE').setValue('below_igcse'),
       new StringSelectMenuOptionBuilder().setLabel('Language').setValue('language'),
+      new StringSelectMenuOptionBuilder().setLabel('Test Prep').setValue('test_prep'),
       new StringSelectMenuOptionBuilder().setLabel('Other').setValue('other')
     ];
     const levelSelect = new StringSelectMenuBuilder()
@@ -3659,6 +3760,134 @@ if (cmd === 'createad') {
         db.reviewConfig.delaySeconds = Math.max(1, Math.floor(seconds));
         saveDB();
         return interaction.reply({ content: `Review reminder set to ${db.reviewConfig.delaySeconds} second(s).`, ephemeral: true });
+      }
+
+      if (cmd === 'seedsubjects') {
+        if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can seed subjects.', ephemeral: true });
+        const dryRun = interaction.options.getBoolean('dryrun') || false;
+
+        // Hardcoded seed data derived from the IGCSE Tutors and AS/A Level Tutors channel exports.
+        // IGCSE channels use the `ig-` prefix; AS/AL channels use the `asl-al-` prefix.
+        // Display names: strip the channel prefix, title-case, then prepend the level label.
+        // Acronyms (ICT) are preserved via an explicit lookup.
+        const ACRONYMS = new Set(['ict']);
+        function toTitleCase(str) {
+          return str.split(' ').map(w => {
+            if (ACRONYMS.has(w.toLowerCase())) return w.toUpperCase();
+            return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+          }).join(' ');
+        }
+
+        const SEED_SUBJECTS = [
+          // --- IGCSE/GCSE ---
+          { channelSlug: 'ig-accounting',                    level: 'igcse' },
+          { channelSlug: 'ig-add-maths',                     level: 'igcse' },
+          { channelSlug: 'ig-arabic',                        level: 'igcse' },
+          { channelSlug: 'ig-art-and-design',                level: 'igcse' },
+          { channelSlug: 'ig-biology',                       level: 'igcse' },
+          { channelSlug: 'ig-business-studies',              level: 'igcse' },
+          { channelSlug: 'ig-chemistry',                     level: 'igcse' },
+          { channelSlug: 'ig-combined-coordinate-sciences',  level: 'igcse' },
+          { channelSlug: 'ig-computer-science',              level: 'igcse' },
+          { channelSlug: 'ig-design-and-technology',         level: 'igcse' },
+          { channelSlug: 'ig-economics',                     level: 'igcse' },
+          { channelSlug: 'ig-english-literature',            level: 'igcse' },
+          { channelSlug: 'ig-english-second-language',       level: 'igcse' },
+          { channelSlug: 'ig-environmental-management',      level: 'igcse' },
+          { channelSlug: 'ig-first-language-english',        level: 'igcse' },
+          { channelSlug: 'ig-french',                        level: 'igcse' },
+          { channelSlug: 'ig-geography',                     level: 'igcse' },
+          { channelSlug: 'ig-german',                        level: 'igcse' },
+          { channelSlug: 'ig-global-perspectives',           level: 'igcse' },
+          { channelSlug: 'ig-hindi',                         level: 'igcse' },
+          { channelSlug: 'ig-history',                       level: 'igcse' },
+          { channelSlug: 'ig-ict',                           level: 'igcse' },
+          { channelSlug: 'ig-islamiyat',                     level: 'igcse' },
+          { channelSlug: 'ig-malay',                         level: 'igcse' },
+          { channelSlug: 'mandarin-chinese',                 level: 'igcse' },  // server channel is "mandarin-chinese" (no ig- prefix) → display: "IGCSE/GCSE Mandarin Chinese"
+          { channelSlug: 'ig-maths',                         level: 'igcse' },
+          { channelSlug: 'ig-music',                         level: 'igcse' },
+          { channelSlug: 'ig-other-languages',               level: 'igcse' },
+          { channelSlug: 'ig-pakistan-studies',              level: 'igcse' },
+          { channelSlug: 'ig-physical-education',            level: 'igcse' },
+          { channelSlug: 'ig-physics',                       level: 'igcse' },
+          { channelSlug: 'ig-psychology',                    level: 'igcse' },
+          { channelSlug: 'ig-sociology',                     level: 'igcse' },
+          { channelSlug: 'ig-travel-and-tourism',            level: 'igcse' },
+          { channelSlug: 'ig-urdu',                          level: 'igcse' },
+          // --- AS/A Level ---
+          { channelSlug: 'asl-al-accounting',                level: 'a_level' },
+          { channelSlug: 'asl-al-biology',                   level: 'a_level' },
+          { channelSlug: 'asl-al-business',                  level: 'a_level' },
+          { channelSlug: 'asl-al-computer-science',          level: 'a_level' },
+          { channelSlug: 'asl-al-economics',                 level: 'a_level' },
+          { channelSlug: 'asl-al-further-maths',             level: 'a_level' },
+          { channelSlug: 'asl-al-history',                   level: 'a_level' },
+          { channelSlug: 'asl-al-information-technology',    level: 'a_level' },
+          { channelSlug: 'asl-al-law',                       level: 'a_level' },
+          { channelSlug: 'asl-al-maths',                     level: 'a_level' },
+          { channelSlug: 'other-asl-al-subjects',            level: 'a_level' },  // non-standard slug → display: "AS/AL Other Subjects" (kept for backward compat)
+          { channelSlug: 'asl-al-physics',                   level: 'a_level' },
+          { channelSlug: 'asl-al-psychology',                level: 'a_level' },
+        ];
+
+        // Convert channel slug → display name
+        function slugToDisplayName(slug, level) {
+          // Strip level channel prefix
+          let bare = slug
+            .replace(/^ig-/, '')
+            .replace(/^asl-al-/, '')
+            .replace(/^other-asl-al-/, 'other ')  // e.g. "other-asl-al-subjects" → "other subjects"
+            .replace(/-/g, ' ');
+          bare = toTitleCase(bare);
+          if (level === 'igcse') return `IGCSE/GCSE ${bare}`;
+          if (level === 'a_level') return `AS/AL ${bare}`;
+          return bare;
+        }
+
+        if (!db.subjects) db.subjects = [];
+        if (!db.subjectLevels) db.subjectLevels = {};
+
+        const added = [];
+        const skipped = [];
+        for (const { channelSlug, level } of SEED_SUBJECTS) {
+          const displayName = slugToDisplayName(channelSlug, level);
+          if (db.subjects.includes(displayName)) {
+            // Update level mapping even if subject already exists
+            if (!db.subjectLevels[displayName]) {
+              db.subjectLevels[displayName] = level;
+              if (!dryRun) skipped.push(`${displayName} (level updated)`);
+              else skipped.push(`${displayName} (exists, would update level)`);
+            } else {
+              skipped.push(`${displayName} (already exists)`);
+            }
+          } else {
+            added.push({ displayName, level });
+            if (!dryRun) {
+              db.subjects.push(displayName);
+              db.subjectLevels[displayName] = level;
+            }
+          }
+        }
+
+        if (!dryRun && added.length > 0) {
+          saveDB();
+          await registerCommands();
+        }
+
+        const lines = [
+          dryRun ? '**DRY RUN — no changes saved**' : null,
+          added.length > 0 ? `**Added (${added.length}):**\n${added.map(s => `• ${s.displayName} [${s.level}]`).join('\n')}` : 'No new subjects to add.',
+          skipped.length > 0 ? `**Skipped (${skipped.length}):**\n${skipped.map(s => `• ${s}`).join('\n')}` : null,
+        ].filter(Boolean).join('\n\n');
+
+        // Split into chunks to stay within Discord's 2000-char limit
+        const chunks = splitMessage(lines, 1900);
+        await interaction.reply({ content: chunks[0], ephemeral: true }).catch(() => {});
+        for (let i = 1; i < chunks.length; i++) {
+          await interaction.followUp({ content: chunks[i], ephemeral: true }).catch(() => {});
+        }
+        return;
       }
 
       if (cmd === 'migrateads') {
