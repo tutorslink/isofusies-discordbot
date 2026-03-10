@@ -66,6 +66,8 @@ export default function initModmail({ client, db, saveDB, config = {}, notifyErr
   const MODMAIL_CATEGORY_ID = config.MODMAIL_CATEGORY_ID ?? '1443291406612561983';
   const MODMAIL_TRANSCRIPTS_CHANNEL_ID = config.MODMAIL_TRANSCRIPTS_CHANNEL_ID ?? ENV_MODMAIL_TRANSCRIPTS_CHANNEL_ID;
 
+  const STALE_CHANNEL_MSG = 'Your support channel no longer exists (it may have been deleted by staff). Press **Close Ticket** below to clear this ticket so you can open a new one.';
+
   if (!GUILD_ID || !STAFF_ROLE_ID || !MODMAIL_TRANSCRIPTS_CHANNEL_ID) {
     throw new Error('modmail config missing required env IDs: GUILD_ID, STAFF_ROLE_ID, MODMAIL_TRANSCRIPTS_CHANNEL_ID');
   }
@@ -447,27 +449,42 @@ ${String(err && (err.stack || err))}`;
         }
 
         const pending = db.modmail.pending && db.modmail.pending[userId] ? db.modmail.pending[userId] : null;
+        const ch = await client.channels.fetch(channelId).catch(() => null);
+
+        if (!ch) {
+          // Channel was deleted — offer user a button to close the stale ticket
+          const closeStaleBtn = new ButtonBuilder()
+            .setCustomId(`mm_close_stale|${channelId}|${purposeKey}`)
+            .setLabel('Close Ticket')
+            .setStyle(ButtonStyle.Danger);
+          const staleRow = new ActionRowBuilder().addComponents(closeStaleBtn);
+          try {
+            await interaction.editReply({
+              content: STALE_CHANNEL_MSG,
+              components: [staleRow]
+            }).catch(() => {});
+          } catch (e) {}
+          return;
+        }
+
         if (pending && Array.isArray(pending.messages) && pending.messages.length) {
-          const ch = await client.channels.fetch(channelId).catch(() => null);
-          if (ch) {
-            for (const p of pending.messages) {
-              ticket.messages.push({ who: `User ${userId}`, at: p.at || Date.now(), text: p.text || '', attachments: p.attachments || [] });
-              const sendRes = await ch.send({ content: `Message from <@${userId}>: ${p.text || ''}`, files: p.attachments && p.attachments.length ? p.attachments.slice() : [] }).catch(err => ({ __failed: true, error: err }));
-              if (!sendRes || sendRes.__failed) {
-                console.warn('route pending to channel failed', sendRes && sendRes.error);
-              } else if (p.messageId) {
-                // react ✅ on original DM message if possible
-                try {
-                  const u = await client.users.fetch(userId).catch(() => null);
-                  const dm = u ? await u.createDM().catch(() => null) : null;
-                  const m = dm ? await dm.messages.fetch(p.messageId).catch(() => null) : null;
-                  if (m) await m.react('✅').catch(() => {});
-                } catch (e) {}
-              }
+          for (const p of pending.messages) {
+            ticket.messages.push({ who: `User ${userId}`, at: p.at || Date.now(), text: p.text || '', attachments: p.attachments || [] });
+            const sendRes = await ch.send({ content: `Message from <@${userId}>: ${p.text || ''}`, files: p.attachments && p.attachments.length ? p.attachments.slice() : [] }).catch(err => ({ __failed: true, error: err }));
+            if (!sendRes || sendRes.__failed) {
+              console.warn('route pending to channel failed', sendRes && sendRes.error);
+            } else if (p.messageId) {
+              // react ✅ on original DM message if possible
+              try {
+                const u = await client.users.fetch(userId).catch(() => null);
+                const dm = u ? await u.createDM().catch(() => null) : null;
+                const m = dm ? await dm.messages.fetch(p.messageId).catch(() => null) : null;
+                if (m) await m.react('✅').catch(() => {});
+              } catch (e) {}
             }
-            saveDB();
-            try { await updateSticky(channelId).catch(() => {}); } catch {}
           }
+          saveDB();
+          try { await updateSticky(channelId).catch(() => {}); } catch {}
         }
         // clear pending once routed
         try { delete db.modmail.pending[userId]; saveDB(); } catch {}
@@ -977,10 +994,19 @@ ${String(err && (err.stack || err))}`;
             await message.channel.send('We received your message, but could not deliver it to staff. Please try again later.').catch(() => {});
           }
         } else {
+          // Channel was deleted from Discord but DB mapping still exists — offer user a way to close the stale ticket
           db.modmail.pending[userId] = db.modmail.pending[userId] || { messages: [], createdAt: Date.now() };
           db.modmail.pending[userId].messages.push({ text: message.content || '', attachments, at: Date.now(), messageId: message.id });
           saveDB();
-          await message.channel.send('We cannot find your staff channel right now. Please press Talk to Staff to (re)create a ticket.').catch(() => {});
+          const closeStaleBtn = new ButtonBuilder()
+            .setCustomId(`mm_close_stale|${onlyChannelId}|${onlyPurposeKey}`)
+            .setLabel('Close Ticket')
+            .setStyle(ButtonStyle.Danger);
+          const staleRow = new ActionRowBuilder().addComponents(closeStaleBtn);
+          await message.channel.send({
+            content: STALE_CHANNEL_MSG,
+            components: [staleRow]
+          }).catch(() => {});
         }
         return;
       }
@@ -1099,6 +1125,33 @@ ${String(err && (err.stack || err))}`;
     try {
       if (!interaction.isButton()) return;
       const id = interaction.customId;
+
+      if (id.startsWith('mm_close_stale|')) {
+        const parts = id.split('|');
+        const channelId = parts[1];
+        const purposeKey = parts[2];
+        const userId = interaction.user.id;
+
+        // Verify the pressing user owns the stale ticket (or it's already gone)
+        const ticket = db.modmail.byChannel && db.modmail.byChannel[channelId];
+        if (ticket && ticket.userId !== userId) {
+          return safeReply(interaction, { content: 'Only the ticket owner can close this ticket.', ephemeral: true });
+        }
+
+        // Clean up stale DB entries
+        try { delete db.modmail.byChannel[channelId]; } catch {}
+        try {
+          if (db.modmail.byUser && db.modmail.byUser[userId] && typeof db.modmail.byUser[userId] === 'object') {
+            delete db.modmail.byUser[userId][purposeKey];
+            if (Object.keys(db.modmail.byUser[userId]).length === 0) delete db.modmail.byUser[userId];
+          } else if (db.modmail.byUser && typeof db.modmail.byUser[userId] === 'string') {
+            delete db.modmail.byUser[userId];
+          }
+        } catch {}
+        saveDB();
+
+        return safeReply(interaction, { content: 'Your ticket has been closed. You can now send a new message to open a new support ticket.' });
+      }
 
       if (id.startsWith('mm_close_dm|')) {
         // Disabled: users can no longer close modmail tickets from DM
