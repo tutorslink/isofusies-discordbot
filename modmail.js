@@ -41,8 +41,8 @@ const {
 const MODMAIL_PURPOSE_CATEGORIES = {
   tutor_application: '1460567488634032200',
   complaints_suggestions: '1460567621186621524',
-  customer_service: '1460567769966710809',
-  payment: '1460567838166356122'
+  customer_service: '1481293582634848318',
+  payment: '1481293527760633990'
 };
 
 // Single-letter codes to append to ticket numbers (number stays the same)
