@@ -976,16 +976,16 @@ async function registerCommands() {
           { name: 'Test Prep', value: 'test_prep' },
           { name: 'Other', value: 'other' }
         ]},
-        { name: 'has_tutor', description: 'If true, only show subjects that have at least one tutor assigned', type: 5, required: false }
+        { name: 'tutor-assigned', description: 'Filter by tutor assignment: yes = has tutor, no = no tutor, all = no filter', type: 3, required: false, choices: [{ name: 'yes', value: 'yes' }, { name: 'no', value: 'no' }, { name: 'all', value: 'all' }] }
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
     },
     {
       name: 'tutor',
-      description: 'Manage tutor user IDs or view info',
+      description: 'Manage tutors or view info',
       options: [
         { name: 'action', description: 'add, remove, list, info, or notes', type: 3, required: true, choices: [{ name: 'add', value: 'add' }, { name: 'remove', value: 'remove' }, { name: 'list', value: 'list' }, { name: 'info', value: 'info' }, { name: 'notes', value: 'notes' }] },
-        { name: 'userid', description: 'User ID or ad code (e.g. IG-1) for info/notes, User ID for add/remove', type: 3, required: false },
+        { name: 'user', description: 'Mention or select the tutor user (e.g. @username)', type: 6, required: false },
         { name: 'subject', description: 'Subject for mapping', type: 3, required: false }
       ],
       default_member_permissions: PermissionFlagsBits.ManageMessages.toString()
@@ -2686,29 +2686,27 @@ client.on('interactionCreate', async (interaction) => {
             try {
               await interaction.deferUpdate();
             } catch (e) {
-              // If deferUpdate fails, try update as fallback
               try {
                 await interaction.update({ content: `Processing...`, components: [] });
               } catch (err) {
-                // If both fail, interaction is likely already handled or expired
                 return;
               }
             }
             try { await grantTutorAccess(userid); } catch (e) { try { notifyStaffError(e, 'tutor_add_select grantTutorAccess', interaction); } catch (err) {} }
             delete db._tempTutorAdd[key];
             const tutorUser = await client.users.fetch(userid).catch(() => null);
-            const tutorDisplay = tutorUser ? `${tutorUser.username} (${userid})` : userid;
+            const tutorDisplay = tutorUser ? `**${tutorUser.username}** (<@${userid}>)` : `<@${userid}>`;
             try {
-              await interaction.editReply({ content: `Added tutor ${tutorDisplay} to ${subj}, access grant started.`, components: [] });
+              await interaction.editReply({ content: `Added tutor ${tutorDisplay} to **${subj}**, access grant started.`, components: [] });
             } catch (e) {
-              try { await interaction.followUp({ content: `Added tutor ${tutorDisplay} to ${subj}, access grant started.`, ephemeral: true }); } catch (err) { console.warn('tutor_add_select subject reply failed', err); }
+              try { await interaction.followUp({ content: `Added tutor ${tutorDisplay} to **${subj}**, access grant started.` }); } catch (err) { console.warn('tutor_add_select subject reply failed', err); }
             }
             return;
           }
           try {
-            await interaction.update({ content: `Subject ${selected} selected. Now choose a tutor to add (or run /tutor add again).`, components: interaction.message.components });
+            await interaction.update({ content: `Session expired — no tutor was recorded for subject **${selected}**. Please run \`/tutor add user:@mention\` again to restart the flow.`, components: [] });
           } catch (e) {
-            try { await interaction.reply({ content: `Subject ${selected} selected. Now choose a tutor to add (or run /tutor add again).`, ephemeral: true }); } catch (err) { console.warn('tutor_add_select subject reply failed', err); }
+            try { await interaction.reply({ content: `Session expired — no tutor was recorded for subject **${selected}**. Please run \`/tutor add user:@mention\` again to restart the flow.`, ephemeral: true }); } catch (err) { console.warn('tutor_add_select subject reply failed', err); }
           }
           return;
         }
@@ -2725,38 +2723,35 @@ client.on('interactionCreate', async (interaction) => {
             if (!db.subjectTutors[subj].includes(userid)) db.subjectTutors[subj].push(userid);
             db.tutorProfiles[userid] = db.tutorProfiles[userid] || { addedAt: Date.now(), students: [], reviews: [], rating: { count:0, avg:0 }, notes: '' };
             saveDB();
-            // Acknowledge interaction immediately to prevent expiration
             try {
               await interaction.deferUpdate();
             } catch (e) {
-              // If deferUpdate fails, try update as fallback
               try {
                 await interaction.update({ content: `Processing...`, components: [] });
               } catch (err) {
-                // If both fail, interaction is likely already handled or expired
                 return;
               }
             }
             try { await grantTutorAccess(userid); } catch (e) { try { notifyStaffError(e, 'tutor_add_select grantTutorAccess', interaction); } catch (err) {} }
             delete db._tempTutorAdd[key];
             const tutorUser = await client.users.fetch(userid).catch(() => null);
-            const tutorDisplay = tutorUser ? `${tutorUser.username} (${userid})` : userid;
+            const tutorDisplay = tutorUser ? `**${tutorUser.username}** (<@${userid}>)` : `<@${userid}>`;
             try {
-              await interaction.editReply({ content: `Added tutor ${tutorDisplay} to ${subj}, access grant started.`, components: [] });
+              await interaction.editReply({ content: `Added tutor ${tutorDisplay} to **${subj}**, access grant started.`, components: [] });
             } catch (e) {
-              try { await interaction.followUp({ content: `Added tutor ${tutorDisplay} to ${subj}, access grant started.`, ephemeral: true }); } catch (err) { console.warn('tutor_add_select tutor reply failed', err); }
+              try { await interaction.followUp({ content: `Added tutor ${tutorDisplay} to **${subj}**, access grant started.` }); } catch (err) { console.warn('tutor_add_select tutor reply failed', err); }
             }
             return;
           }
           try {
-            await interaction.update({ content: `Tutor ${selected} selected. Now choose a subject to add them to.`, components: interaction.message.components });
+            await interaction.update({ content: `Tutor <@${selected}> selected. Now choose a subject to add them to.`, components: interaction.message.components });
           } catch (e) {
-            try { await interaction.reply({ content: `Tutor ${selected} selected. Now choose a subject to add them to.`, ephemeral: true }); } catch (err) { console.warn('tutor_add_select tutor reply failed', err); }
+            try { await interaction.reply({ content: `Tutor <@${selected}> selected. Now choose a subject to add them to.`, ephemeral: true }); } catch (err) { console.warn('tutor_add_select tutor reply failed', err); }
           }
           return;
         }
       }
-      // Handler for tutor_add_level: staff selected a level category, now show filtered subjects + tutor select
+      // Handler for tutor_add_level: staff selected a level category, now show filtered subjects only
       if (interaction.customId && interaction.customId.startsWith('tutor_add_level|')) {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can do this.', ephemeral: true }).catch(() => {});
         const chosenRaw = interaction.values && interaction.values[0];
@@ -2791,34 +2786,13 @@ client.on('interactionCreate', async (interaction) => {
           new StringSelectMenuBuilder().setCustomId('tutor_add_select|subject').setPlaceholder(`Select subject (${levelLabel})`).addOptions(subjOptions)
         ));
 
-        // Tutor select: fetch guild members
-        let members = null;
-        try { members = await interaction.guild.members.fetch({ limit: 50 }).catch(() => null); } catch (e) { members = null; }
-        const tutorOptions = [];
-        if (members && members.size) {
-          for (const m of Array.from(members.values()).slice(0, 24)) {
-            tutorOptions.push({ label: m.user.username.substring(0, 100), value: m.id, description: `(${m.user.tag})`.substring(0, 50) });
-          }
-        }
-        if (!tutorOptions.length) {
-          const known = Array.from(new Set(Object.values(db.subjectTutors || {}).flat())).slice(0, 24);
-          for (const tid of known) {
-            let label = `User ID: ${tid}`;
-            let desc = '';
-            try { const mm = await interaction.guild.members.fetch(tid).catch(() => null); if (mm) { label = mm.user.username; desc = `(${mm.user.tag})`; } else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } } } catch (e) {}
-            tutorOptions.push({ label: label.substring(0, 100), value: String(tid).substring(0, 100), description: desc.substring(0, 50) });
-          }
-        }
-        if (tutorOptions.length) {
-          rows.push(new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder().setCustomId('tutor_add_select|tutor').setPlaceholder('Select tutor to add').addOptions(tutorOptions)
-          ));
-        }
-
+        // Build tutor display for the message from temp storage
+        const storedUserId = db._tempTutorAdd[key].userid;
+        const tutorPart = storedUserId ? ` for <@${storedUserId}>` : '';
         try {
-          await interaction.update({ content: `Level **${levelLabel}** selected. Now select a subject and tutor:`, components: rows });
+          await interaction.update({ content: `Level **${levelLabel}** selected${tutorPart}. **Step 2:** Select the subject:`, components: rows });
         } catch (e) {
-          try { await interaction.reply({ content: `Level **${levelLabel}** selected. Now select a subject and tutor:`, components: rows, ephemeral: true }); } catch (err) { console.warn('tutor_add_level reply failed', err); }
+          try { await interaction.reply({ content: `Level **${levelLabel}** selected${tutorPart}. **Step 2:** Select the subject:`, components: rows }); } catch (err) { console.warn('tutor_add_level reply failed', err); }
         }
         return;
       }
@@ -3243,7 +3217,7 @@ if (cmd === 'close') {
           return interaction.reply({ content: `Subject removed: ${subj}`, ephemeral: true }).catch(() => {});
         } else {
           if (!db.subjects || db.subjects.length === 0) return interaction.reply({ content: 'No subjects found.', ephemeral: true }).catch(() => {});
-          const hasTutorFilter = interaction.options.getBoolean('has_tutor', false);
+          const tutorAssignedFilter = interaction.options.getString('tutor-assigned', false); // 'yes', 'no', 'all', or null
           const filterLevel = levelRaw ? (normalizeCreateAdLevelKey(levelRaw) || levelRaw) : null;
           let subjectsToList = db.subjects;
           if (filterLevel) {
@@ -3252,11 +3226,14 @@ if (cmd === 'close') {
               return lvl === filterLevel;
             });
           }
-          if (hasTutorFilter) {
+          if (tutorAssignedFilter === 'yes') {
             subjectsToList = subjectsToList.filter(s => ((db.subjectTutors || {})[s] || []).length > 0);
+          } else if (tutorAssignedFilter === 'no') {
+            subjectsToList = subjectsToList.filter(s => ((db.subjectTutors || {})[s] || []).length === 0);
           }
+          // tutorAssignedFilter === 'all' or null: no filtering by assignment
           if (subjectsToList.length === 0) {
-            const filterDesc = [filterLevel ? `level: ${filterLevel}` : null, hasTutorFilter ? 'has tutor' : null].filter(Boolean).join(', ');
+            const filterDesc = [filterLevel ? `level: ${CREATEAD_LEVEL_LABELS[filterLevel] || filterLevel}` : null, tutorAssignedFilter === 'yes' ? 'has tutor' : tutorAssignedFilter === 'no' ? 'no tutor' : null].filter(Boolean).join(', ');
             return interaction.reply({ content: `No subjects found${filterDesc ? ` matching (${filterDesc})` : ''}.`, ephemeral: true }).catch(() => {});
           }
           const lines = subjectsToList.map(s => {
@@ -3264,11 +3241,11 @@ if (cmd === 'close') {
             const tutorCount = (db.subjectTutors[s] || []).length;
             return `${s} [${lvl}]${tutorCount ? ` (${tutorCount} tutor${tutorCount > 1 ? 's' : ''})` : ''}`;
           });
-          const filterDesc = [filterLevel ? `level: ${CREATEAD_LEVEL_LABELS[filterLevel] || filterLevel}` : null, hasTutorFilter ? 'has tutor' : null].filter(Boolean).join(', ');
+          const filterDesc = [filterLevel ? `level: ${CREATEAD_LEVEL_LABELS[filterLevel] || filterLevel}` : null, tutorAssignedFilter === 'yes' ? 'has tutor' : tutorAssignedFilter === 'no' ? 'no tutor' : null].filter(Boolean).join(', ');
           const chunks = splitMessage(`Subjects (${lines.length})${filterDesc ? ` [${filterDesc}]` : ''}:\n${lines.join('\n')}`, 1900);
-          await interaction.reply({ content: chunks[0], ephemeral: true }).catch(() => {});
+          await interaction.reply({ content: chunks[0] }).catch(() => {});
           for (let i = 1; i < chunks.length; i++) {
-            await interaction.followUp({ content: chunks[i], ephemeral: true }).catch(() => {});
+            await interaction.followUp({ content: chunks[i] }).catch(() => {});
           }
           return;
         }
@@ -3277,7 +3254,8 @@ if (cmd === 'close') {
       // tutor command extended to show students and reviews
       if (cmd === 'tutor') {
         const action = interaction.options.getString('action', true);
-        const useridRaw = interaction.options.getString('userid', false);
+        const userOpt = interaction.options.getUser('user', false);
+        const useridRaw = userOpt ? userOpt.id : null;
         const subj = interaction.options.getString('subject', false);
 
         db.tutorProfiles = db.tutorProfiles || {};
@@ -3304,13 +3282,7 @@ if (cmd === 'close') {
             const select = new StringSelectMenuBuilder().setCustomId('tutor_select|info').setPlaceholder('Select a tutor to view info').addOptions(options);
             return interaction.reply({ content: 'Select a tutor to view info:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true }).catch(() => {});
           }
-          // Resolve ad code to tutor ID if an ad code was provided
-          let userid = String(useridRaw);
-          if (isAdCode(userid)) {
-            const resolved = resolveAdCodeToTutorId(userid);
-            if (!resolved) return interaction.reply({ content: `No ad found with code **${userid}**. Please check the code and try again.`, ephemeral: true }).catch(() => {});
-            userid = resolved;
-          }
+          const userid = String(useridRaw);
           const subjects = [];
           for (const s of db.subjects) {
             const arr = db.subjectTutors[s] || [];
@@ -3321,22 +3293,25 @@ if (cmd === 'close') {
           const profile = db.tutorProfiles[userid] || { addedAt: null, students: [], reviews: [], rating: { count: 0, avg: 0 } };
           const addedAt = profile && profile.addedAt ? `<t:${Math.floor(profile.addedAt/1000)}:f>` : '(unknown)';
           let userTag = '(not in guild)';
+          let displayName = null;
           let joined = '(unknown)';
           try {
             const member = await interaction.guild.members.fetch(userid).catch(() => null);
             if (member) {
               userTag = member.user.tag;
+              displayName = member.displayName;
               joined = member.joinedAt ? `<t:${Math.floor(member.joinedAt.getTime()/1000)}:f>` : '(unknown)';
             } else {
               const user = await client.users.fetch(userid).catch(() => null);
-              if (user) userTag = user.tag;
+              if (user) { userTag = user.tag; displayName = user.username; }
             }
           } catch (e) {}
           const rating = profile.rating && profile.rating.count ? `${(Number(profile.rating.avg) || 0).toFixed(2)} ⭐️ (${profile.rating.count})` : '(no ratings)';
           const studentList = (profile.students && profile.students.length) ? profile.students.join(', ') : '(none)';
           const notes = profile.notes || '(no notes)';
+          const nameDisplay = displayName ? `**${displayName}** (<@${userid}> · \`${userTag}\`)` : `<@${userid}> · \`${userTag}\``;
           const lines = [
-            `Tutor info for: ${userTag} (ID: ${userid})`,
+            `Tutor info for: ${nameDisplay} — ID: \`${userid}\``,
             `Ad code(s): ${adCodesList.length ? adCodesList.join(', ') : '(none)'}`,
             `Guild joined: ${joined}`,
             `Tutor added at: ${addedAt}`,
@@ -3345,7 +3320,7 @@ if (cmd === 'close') {
             `Rating: ${rating}`,
             `Notes: ${notes}`
           ];
-          return interaction.reply({ content: lines.join('\n'), ephemeral: true }).catch(() => {});
+          return interaction.reply({ content: lines.join('\n') }).catch(() => {});
         }
 
         if (action === 'notes') {
@@ -3499,9 +3474,12 @@ if (cmd === 'close') {
 
           // For the add flow with no subject: show level dropdown first, then filtered subjects
           if (action === 'add' && !subj) {
+            if (!useridRaw) {
+              return interaction.reply({ content: 'Please mention or select the tutor using the `user` option, e.g. `/tutor add user:@username`.', ephemeral: true }).catch(() => {});
+            }
             const levelOptions = [
               new StringSelectMenuOptionBuilder().setLabel('University').setValue('university'),
-              new StringSelectMenuOptionBuilder().setLabel('A level').setValue('a_level'),
+              new StringSelectMenuOptionBuilder().setLabel('A Level').setValue('a_level'),
               new StringSelectMenuOptionBuilder().setLabel('IGCSE').setValue('igcse'),
               new StringSelectMenuOptionBuilder().setLabel('Below IGCSE').setValue('below_igcse'),
               new StringSelectMenuOptionBuilder().setLabel('Language').setValue('language'),
@@ -3512,7 +3490,8 @@ if (cmd === 'close') {
               .setCustomId(`tutor_add_level|${interaction.user.id}`)
               .setPlaceholder('Select subject level category')
               .addOptions(levelOptions);
-            return interaction.reply({ content: 'Step 1: Select the subject level category to filter subjects:', components: [new ActionRowBuilder().addComponents(levelSelect)], ephemeral: true }).catch(() => {});
+            const tutorMention = userOpt ? `<@${userOpt.id}>` : useridRaw;
+            return interaction.reply({ content: `Adding tutor ${tutorMention} — **Step 1:** Select the subject level to filter subjects:`, components: [new ActionRowBuilder().addComponents(levelSelect)] }).catch(() => {});
           }
 
           const rows = [];
@@ -3526,58 +3505,33 @@ if (cmd === 'close') {
             rows.push(new ActionRowBuilder().addComponents(subjectSelect));
           }
 
-          // Tutor select if userid not provided
-          if (!useridRaw) {
+          // Tutor select if userid not provided (only for remove flow; add flow requires USER option)
+          if (!useridRaw && action === 'remove') {
+            const known = Array.from(new Set(Object.values(db.subjectTutors || {}).flat()));
             const options = [];
-            if (action === 'remove') {
-              // For remove flow, only show tutors that exist in db.subjectTutors
-              const known = Array.from(new Set(Object.values(db.subjectTutors || {}).flat()));
-              for (const tid of known.slice(0,24)) {
-                let label = `User ID: ${tid}`;
-                let desc = '';
-                try { const mm = await interaction.guild.members.fetch(tid).catch(() => null); if (mm) { label = mm.user.username; desc = `(${mm.user.tag})`; } else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } } } catch (e) {}
-                options.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
-              }
-            } else {
-              // Default add flow: fetch guild members first for convenience
-              let members = null;
-              try { members = await interaction.guild.members.fetch({ limit: 50 }).catch(() => null); } catch (e) { members = null; }
-              if (members && members.size) {
-                for (const m of Array.from(members.values()).slice(0,24)) {
-                  const label = m.user.username.substring(0,100);
-                  const desc = `(${m.user.tag})`.substring(0,50);
-                  options.push({ label, value: m.id, description: desc });
-                }
-              }
-              // Fallback: include known tutors (ids)
-              if (!options.length) {
-                const known = Array.from(new Set(Object.values(db.subjectTutors || {}).flat())).slice(0,24);
-                for (const tid of known) {
-                  let label = `User ID: ${tid}`;
-                  let desc = '';
-                  try { const mm = await interaction.guild.members.fetch(tid).catch(() => null); if (mm) { label = mm.user.username; desc = `(${mm.user.tag})`; } else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } } } catch (e) {}
-                  options.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
-                }
-              }
+            for (const tid of known.slice(0,24)) {
+              let label = `User ID: ${tid}`;
+              let desc = '';
+              try { const mm = await interaction.guild.members.fetch(tid).catch(() => null); if (mm) { label = mm.user.username; desc = `(${mm.user.tag})`; } else { const u = await client.users.fetch(tid).catch(() => null); if (u) { label = u.username; desc = `(${u.tag})`; } } } catch (e) {}
+              options.push({ label: label.substring(0,100), value: String(tid).substring(0,100), description: desc.substring(0,50) });
             }
-
             if (options.length) {
-              const customId = action === 'remove' ? 'tutor_remove_select|tutor' : 'tutor_add_select|tutor';
-              const tutorSelect = new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder(action === 'remove' ? 'Select tutor to remove' : 'Select tutor to add').addOptions(options);
+              const tutorSelect = new StringSelectMenuBuilder().setCustomId('tutor_remove_select|tutor').setPlaceholder('Select tutor to remove').addOptions(options);
               rows.push(new ActionRowBuilder().addComponents(tutorSelect));
             }
           }
 
-          if (!rows.length) return interaction.reply({ content: 'Nothing to select. Provide both userid and subject.', ephemeral: true }).catch(() => {});
-          return interaction.reply({ content: 'Select subject and/or tutor to add (your selections will be saved).', components: rows, ephemeral: true }).catch(() => {});
+          if (!rows.length) return interaction.reply({ content: 'Nothing to select. Provide both `user` and `subject` options.', ephemeral: true }).catch(() => {});
+          return interaction.reply({ content: 'Select subject and/or tutor (your selections will be saved).', components: rows, ephemeral: true }).catch(() => {});
         }
 
         const userid = String(useridRaw);
+        const tutorMentionFmt = userOpt ? `**${userOpt.username}** (<@${userid}>)` : `<@${userid}>`;
         db.subjectTutors[subj] = db.subjectTutors[subj] || [];
 
         if (action === 'add') {
           if (db.subjectTutors[subj].includes(userid)) {
-            return interaction.reply({ content: 'User already added for this subject.', ephemeral: true }).catch(() => {});
+            return interaction.reply({ content: `${tutorMentionFmt} is already added for **${subj}**.`, ephemeral: true }).catch(() => {});
           }
 
           db.subjectTutors[subj].push(userid);
@@ -3585,9 +3539,9 @@ if (cmd === 'close') {
           saveDB();
 
           try {
-            await interaction.reply({ content: `Added tutor ${userid} to ${subj}, access grant started.`, ephemeral: true });
+            await interaction.reply({ content: `Added tutor ${tutorMentionFmt} to **${subj}**, access grant started.` });
           } catch (err) {
-            try { await interaction.followUp({ content: `Added tutor ${userid} to ${subj}, access grant started.`, ephemeral: true }); } catch {}
+            try { await interaction.followUp({ content: `Added tutor ${tutorMentionFmt} to **${subj}**, access grant started.` }); } catch {}
           }
 
           (async () => {
@@ -3938,7 +3892,7 @@ if (cmd === 'createad') {
 
       if (cmd === 'staffhelp') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can access this.', ephemeral: true }).catch(() => {});
-        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list [level] [has_tutor]\n/tutor add/remove/list/info\n/createad\n/editad\n/deletead\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true }).catch(() => {});
+        return interaction.reply({ content: `Staff Commands:\n/subject add/remove/list [level] [tutor-assigned:yes/no/all]\n/tutor add/remove/list/info [user:@mention]\n/createad\n/editad\n/deletead\n/sticky\n/embedcolor\n/editinit\n/close\n/student add/remove\n/reviewreminder\n/migrateads [force:true]`, ephemeral: true }).catch(() => {});
       }
 
       // bumpleaderboard command
