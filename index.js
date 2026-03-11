@@ -777,6 +777,11 @@ try {
   try { notifyStaffError(e, 'initDemo'); } catch (err) { console.warn('notify staff failed for initDemo', err); }
 }
 
+// In-memory map: tutorThreadId -> error Message object (one error message at a time per thread)
+const threadErrorMessages = new Map();
+// How long (ms) the internal-note acknowledgment stays before auto-deleting
+const INTERNAL_NOTE_ACK_TIMEOUT_MS = 10000;
+
 // centralised sticky repost helper, given a channel object, with a short lock to prevent duplicate reposts
 const _stickyLocks = new Set();
 async function repostStickyInChannel(channel) {
@@ -819,11 +824,18 @@ async function postToTutorsFeed(guild, ticketCode, subject, firstMessage, ticket
 
   const tutorIds = db.subjectTutors[subject] || [];
   const mentionText = tutorIds.length ? '\n\nNotifying: ' + tutorIds.map(id => `<@${id}>`).join(' ') : '';
-  const content = `New request, Student **${ticketCode}**, Subject: **${subject}**\nFirst message: ${firstMessage}\n\nUse /reply ${ticketCode} <message> to reply.${mentionText}`;
+  const content = `New request, Student **${ticketCode}**, Subject: **${subject}**\nFirst message: ${firstMessage}${mentionText}`;
 
   const tutorsMessage = await tutorsFeed.send({ content }).catch(err => { throw err; });
   const thread = await tutorsMessage.startThread({ name: `Conversation ${ticketCode}`, autoArchiveDuration: 1440 }).catch(() => null);
-  if (thread) ticket.tutorThreadId = thread.id;
+  if (thread) {
+    ticket.tutorThreadId = thread.id;
+    await thread.send(
+      `📌 **How to reply to the student in this thread:**\n` +
+      `• Messages you send here are **automatically forwarded** to the student.\n` +
+      `• Prefix a message with \`=\` to keep it as an **internal note** (e.g. \`=only tutors see this\`) — it will **not** be sent to the student.`
+    ).catch(() => {});
+  }
   ticket.tutorMessageId = tutorsMessage.id;
   saveDB();
   return { tutorsMessage, thread };
@@ -4428,13 +4440,74 @@ client.on('messageCreate', async (message) => {
       return;
     }
 
-    // Tutors feed thread policing
+    // Tutors feed thread — = prefix bridging
     if (message.channel?.isThread && typeof message.channel.isThread === 'function' && message.channel.isThread()) {
-      const parent = await message.channel.fetch(true).catch(() => null);
-      if (parent && parent.parentId === TUTORS_FEED_CHANNEL_ID) {
+      const threadChannel = await message.channel.fetch(true).catch(() => null);
+      if (threadChannel && threadChannel.parentId === TUTORS_FEED_CHANNEL_ID) {
+        // Only handle non-bot messages in ticket threads
         if (!message.author.bot) {
-          try { await message.delete().catch(() => {}); } catch (err) { console.warn('failed delete tutor thread message', err); try { notifyStaffError(err, 'messageCreate delete tutors thread message', message); } catch (e) {} }
-          try { await message.author.send('Please use the /reply command to reply to students, example: /reply 12 Hello, I can help.').catch(() => {}); } catch (err) { console.warn('failed DM tutor about reply usage', err); try { notifyStaffError(err, 'messageCreate DM tutor guidance', message); } catch (e) {} }
+          const threadId = message.channel.id;
+          const ticketEntry = Object.entries(db.tickets).find(([, t]) => t.tutorThreadId === threadId);
+          if (ticketEntry) {
+            const [code, ticket] = ticketEntry;
+
+            // Always clear any previous error message when the tutor sends a new message
+            if (threadErrorMessages.has(threadId)) {
+              const prevErr = threadErrorMessages.get(threadId);
+              threadErrorMessages.delete(threadId);
+              prevErr.delete().catch(() => {});
+            }
+
+            const msgContent = message.content || '';
+            if (!msgContent.startsWith('=')) {
+              // Normal message (no = prefix) — forward to student
+              const text = msgContent;
+              const files = [...message.attachments.values()].map(a => a.url);
+              // Skip forwarding if there is nothing to send (no text and no attachments)
+              if (!text && !files.length) return;
+              try {
+                const guild = message.guild;
+                const ticketChannel = await guild.channels.fetch(ticket.ticketChannelId).catch(() => null);
+                if (ticketChannel) {
+                  const userIdStr = String(message.author.id);
+                  ticket.tutorMap = ticket.tutorMap || {};
+                  ticket.tutorCount = ticket.tutorCount || 0;
+                  if (!ticket.tutorMap[userIdStr]) {
+                    ticket.tutorCount += 1;
+                    ticket.tutorMap[userIdStr] = ticket.tutorCount;
+                    saveDB();
+                  }
+                  const tutorLabel = `Tutor ${ticket.tutorMap[userIdStr]}`;
+                  const forwardContent = text ? `Reply from ${tutorLabel}: ${text}` : `Reply from ${tutorLabel}:`;
+                  await ticketChannel.send({ content: forwardContent, ...(files.length ? { files } : {}) }).catch(() => {});
+                  ticket.messages = ticket.messages || [];
+                  ticket.messages.push({ who: tutorLabel, tutorId: userIdStr, at: Date.now(), text });
+                  saveDB();
+                }
+              } catch (e) {
+                console.warn('Failed to forward tutor message to student', e);
+                try { notifyStaffError(e, 'messageCreate bridge forward to student', message); } catch (err) {}
+              }
+            } else {
+              // = prefix — internal note, post a brief auto-deleting acknowledgment
+              try {
+                const noteMsg = await message.channel.send(
+                  `🔒 Internal note — this message was **not** sent to the student.`
+                ).catch(() => null);
+                if (noteMsg) {
+                  threadErrorMessages.set(threadId, noteMsg);
+                  setTimeout(() => {
+                    if (threadErrorMessages.get(threadId) === noteMsg) {
+                      threadErrorMessages.delete(threadId);
+                      noteMsg.delete().catch(() => {});
+                    }
+                  }, INTERNAL_NOTE_ACK_TIMEOUT_MS);
+                }
+              } catch (e) {
+                console.warn('Failed to post internal-note acknowledgment in tutor thread', e);
+              }
+            }
+          }
         }
       }
     }
