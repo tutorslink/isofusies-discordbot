@@ -689,7 +689,8 @@ ${String(err && (err.stack || err))}`;
         // Ask if staff wants to create an ad for this tutor
         const yesBtn = new ButtonBuilder().setCustomId(`mm_create_ad|${channelId}|yes`).setLabel('✅ Yes, Create Ad').setStyle(ButtonStyle.Success);
         const noBtn = new ButtonBuilder().setCustomId(`mm_create_ad|${channelId}|no`).setLabel('❌ No, Close Ticket').setStyle(ButtonStyle.Danger);
-        const row = new ActionRowBuilder().addComponents(yesBtn, noBtn);
+        const contactBtn = new ButtonBuilder().setCustomId(`mm_set_contact|${channelId}`).setLabel('📱 Set Contact Info').setStyle(ButtonStyle.Secondary);
+        const row = new ActionRowBuilder().addComponents(yesBtn, noBtn, contactBtn);
         
         await interaction.channel.send({ content: `Tutor <@${ticket.userId}> has been added for **${selectedSubject}**.\n\nWould you like to create an ad for this tutor?`, components: [row] }).catch(() => {});
         return;
@@ -790,6 +791,35 @@ ${String(err && (err.stack || err))}`;
           await interaction.channel.send({ content: 'Please select the subject for this tutor:', components: [row] }).catch(() => {});
           return;
         }
+      }
+
+      // Set contact info button for accepted tutor (mm_set_contact|channelId)
+      if (custom.startsWith('mm_set_contact|')) {
+        const channelId = custom.split('|')[1];
+        const ticket = db.modmail.byChannel[channelId];
+        if (!ticket) return safeReply(interaction, { content: 'Ticket not found.', ephemeral: true });
+        if (!isStaff(interaction.member)) return safeReply(interaction, { content: 'Only staff can use this.', ephemeral: true });
+
+        const tutorUserId = ticket.userId;
+        db.tutorProfiles = db.tutorProfiles || {};
+        db.tutorProfiles[tutorUserId] = db.tutorProfiles[tutorUserId] || { addedAt: Date.now(), students: [], reviews: [], rating: { count: 0, avg: 0 }, notes: '' };
+        const profile = db.tutorProfiles[tutorUserId];
+
+        const modal = new ModalBuilder()
+          .setCustomId(`mm_contact_modal|${channelId}|${tutorUserId}`)
+          .setTitle('Set Tutor Contact Info');
+        const phoneInput = new TextInputBuilder()
+          .setCustomId('phone').setLabel('Phone Number').setStyle(TextInputStyle.Short)
+          .setRequired(false).setValue((profile.phoneNumber || '').substring(0, 100)).setPlaceholder('e.g. +1 234 567 890');
+        const dobInput = new TextInputBuilder()
+          .setCustomId('dob').setLabel('Date of Birth').setStyle(TextInputStyle.Short)
+          .setRequired(false).setValue((profile.dob || '').substring(0, 100)).setPlaceholder('e.g. YYYY-MM-DD');
+        modal.addComponents(new ActionRowBuilder().addComponents(phoneInput), new ActionRowBuilder().addComponents(dobInput));
+        try { await interaction.showModal(modal); } catch (err) {
+          console.warn('showModal mm_set_contact failed', err);
+          return safeReply(interaction, { content: 'Could not open contact info modal, try again.', ephemeral: true });
+        }
+        return;
       }
 
       // Create ad buttons (mm_create_ad|channelId|yes/no)
@@ -1227,6 +1257,25 @@ ${String(err && (err.stack || err))}`;
         await interaction.channel.send(`✅ New subject **${subjectTrimmed}** created and tutor <@${ticket.userId}> has been added. Closing ticket...`).catch(() => {});
         await closeTicket(ticket, `${interaction.user.tag} (staff)`);
         return;
+      }
+
+      // Handle set contact info modal (mm_contact_modal|channelId|tutorUserId)
+      if (interaction.customId.startsWith('mm_contact_modal|')) {
+        const parts = interaction.customId.split('|');
+        const channelId = parts[1];
+        const tutorUserId = parts[2];
+        if (!isStaff(interaction.member)) return safeReply(interaction, { content: 'Only staff can set tutor contact info.', ephemeral: true });
+
+        const phone = interaction.fields.getTextInputValue('phone') || '';
+        const dob = interaction.fields.getTextInputValue('dob') || '';
+
+        db.tutorProfiles = db.tutorProfiles || {};
+        db.tutorProfiles[tutorUserId] = db.tutorProfiles[tutorUserId] || { addedAt: Date.now(), students: [], reviews: [], rating: { count: 0, avg: 0 }, notes: '' };
+        db.tutorProfiles[tutorUserId].phoneNumber = phone;
+        db.tutorProfiles[tutorUserId].dob = dob;
+        saveDB();
+
+        return safeReply(interaction, { content: `Contact info saved for tutor <@${tutorUserId}>.`, ephemeral: true });
       }
     } catch (err) {
       console.error('add subject modal error', err);
