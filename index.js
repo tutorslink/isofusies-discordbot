@@ -4397,7 +4397,6 @@ if (cmd === 'createad') {
         if (!isStaff(interaction.member)) return interaction.reply({ content: 'Only staff can run ad migration.', ephemeral: true }).catch(() => {});
         const force = interaction.options.getBoolean('force') || false;
 
-        const MIGRATE_MAX_DESCRIPTION_LINES = 4;
         const MIGRATE_RATE_LIMIT_DELAY_MS = 1000;
 
         await interaction.deferReply({ ephemeral: true }).catch(() => {});
@@ -4428,8 +4427,6 @@ if (cmd === 'createad') {
             // ads created before the level field was introduced still get routed
             // to the correct category (e.g. "IGCSE Maths" → igcse, not "other").
             const levelKey = adData.level || detectLevelFromSubject(subject) || 'other';
-            const tutorId = adData.tutorId || null;
-            const embedDescription = adData.embed && adData.embed.description ? adData.embed.description : '';
 
             if (!subject) { skipped++; continue; }
 
@@ -4440,16 +4437,25 @@ if (cmd === 'createad') {
               continue;
             }
 
-            const truncatedDesc = embedDescription
-              ? embedDescription.split('\n').slice(0, MIGRATE_MAX_DESCRIPTION_LINES).join('\n')
-              : null;
-            const permalink = FIND_A_TUTOR_CHANNEL_ID
-              ? `https://discord.com/channels/${GUILD_ID}/${FIND_A_TUTOR_CHANNEL_ID}/${messageId}`
-              : null;
+            // Build structured embed description from fullDetails
+            const details = adData.fullDetails || {};
+            const adCode = adData.adCode || null;
+            let migrateDesc = '';
+            if (adCode) migrateDesc += `**Tutor Code:** ${adCode}\n`;
+            if (details.subjectCodes) migrateDesc += `**Subject Codes:** ${details.subjectCodes}\n`;
+            if (details.languages) migrateDesc += `**Languages:** ${details.languages}\n`;
+            if (details.price && details.price1on1) {
+              migrateDesc += `**Price (Group):** $${details.price}\n`;
+              migrateDesc += `**Price (1-on-1):** $${details.price1on1}\n`;
+            } else if (details.price) {
+              migrateDesc += `**Price:** $${details.price}\n`;
+            } else if (details.price1on1) {
+              migrateDesc += `**Price (1-on-1):** $${details.price1on1}\n`;
+            }
+            migrateDesc += `\nClick **View Full Details** below for more information.\n`;
+            migrateDesc += `📩 DM <@${client.user.id}> when you're ready to pay!`;
 
-            const migrateEmbed = new EmbedBuilder().setTitle(subject);
-            if (truncatedDesc) migrateEmbed.setDescription(truncatedDesc);
-            if (permalink) migrateEmbed.setFooter({ text: `See full ad: ${permalink}` });
+            const migrateEmbed = new EmbedBuilder().setTitle(subject).setDescription(migrateDesc);
             if (adData.embed && adData.embed.color) {
               try { migrateEmbed.setColor(adData.embed.color); } catch (e) {}
             }
@@ -4459,8 +4465,8 @@ if (cmd === 'createad') {
               new ButtonBuilder().setCustomId(`ad_enquire|${subject}`).setLabel('Talk to Tutors!').setStyle(ButtonStyle.Success)
             );
 
-            const messageContent = tutorId ? `Tutor: <@${tutorId}>` : undefined;
-            const sent = await categoryCh.send({ content: messageContent, embeds: [migrateEmbed], components: [migrateRow] }).catch(() => null);
+            // Do NOT ping tutors — tutor identities are kept secret
+            const sent = await categoryCh.send({ embeds: [migrateEmbed], components: [migrateRow] }).catch(() => null);
             if (sent) {
               db.createAds[messageId].categoryChannelId = categoryCh.id;
               db.createAds[messageId].categoryMessageId = sent.id;
