@@ -353,14 +353,16 @@ ${String(err && (err.stack || err))}`;
     } catch (e) { console.warn('postTranscript failed', e); await notifyStaff(e, { module: 'modmail.postTranscript', userId: ticket?.userId }); }
   }
 
-  // Close ticket helper used by modal and message-based flows
-  async function closeTicket(ticket, closedByText) {
+  // Close ticket helper used by modal and message-based flows.
+  // customDmMsg overrides the default "closed by staff" DM (used for auto-close situations).
+  async function closeTicket(ticket, closedByText, customDmMsg = null) {
     try {
       if (!ticket) return;
       await postTranscript(ticket, closedByText);
       try {
         const u = await client.users.fetch(ticket.userId).catch(() => null);
-        if (u) await u.send(`Your staff conversation (Ticket ${ticket.shortId || ('#'+ticket.id)}) has been closed by staff. Transcript saved.`).catch(() => {});
+        const dmMsg = customDmMsg || `Your staff conversation (Ticket ${ticket.shortId || ('#'+ticket.id)}) has been closed by staff. Transcript saved.`;
+        if (u) await u.send(dmMsg).catch(() => {});
       } catch (e) {}
       const ch = await client.channels.fetch(ticket.channelId).catch(() => null);
       if (ch) {
@@ -1405,6 +1407,54 @@ ${String(err && (err.stack || err))}`;
       await closeTicket(ticket, closedByText || 'system');
     } catch (e) { console.warn('closeTicketByChannel failed', e); }
   };
+
+  // Modmail inactivity worker:
+  //   • 24 h after creation with no user message → DM user a warning (ticket will close in 48 h)
+  //   • 72 h after creation with no user message → auto-close the ticket and DM user
+  setInterval(async () => {
+    try {
+      const now = Date.now();
+      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+      const SEVENTY_TWO_HOURS  = 72 * 60 * 60 * 1000;
+      for (const [, ticket] of Object.entries((db.modmail && db.modmail.byChannel) ? db.modmail.byChannel : {})) {
+        try {
+          if (!ticket || !ticket.createdAt) continue;
+          // 'User ' prefix (with trailing space) matches all user-originated messages in modmail,
+          // where `who` is always set to the string "User " followed by the user's tag or ID —
+          // never a bare "User" token without a suffix.
+          const hasUserMessage = (ticket.messages || []).some(m => m.who && m.who.startsWith('User '));
+          if (hasUserMessage) continue;
+          const age = now - ticket.createdAt;
+          // 72-hour auto-close
+          if (age >= SEVENTY_TWO_HOURS) {
+            await closeTicket(
+              ticket,
+              'auto-closed: no user message within 72 hours',
+              `Your support ticket (Ticket ${ticket.shortId || ('#' + ticket.id)}) has been automatically closed because no message was received from you within 72 hours of it being opened.\n\nYou're welcome to open a new ticket any time if you still need assistance.`
+            );
+            continue;
+          }
+          // 24-hour warning (only if not already sent)
+          if (age >= TWENTY_FOUR_HOURS && !ticket.inactivityWarnedAt) {
+            try {
+              const u = await client.users.fetch(ticket.userId).catch(() => null);
+              if (u) {
+                await u.send(
+                  `Hi! Your support ticket (Ticket ${ticket.shortId || ('#' + ticket.id)}) has been open for 24 hours but we haven't received any message from you yet.\n\nPlease send your request so our staff can help you. If no message is received within 48 more hours, this ticket will be **automatically closed**.`
+                ).catch(() => {});
+              }
+              ticket.inactivityWarnedAt = now;
+              saveDB();
+            } catch (e) {
+              console.warn(`modmail inactivity: 24h warning DM failed for ticket ${ticket.id}`, e);
+            }
+          }
+        } catch (e) {
+          console.warn(`modmail inactivity worker: error for ticket ${ticket && ticket.id}`, e);
+        }
+      }
+    } catch (e) { console.warn('modmail inactivity worker error', e); }
+  }, 60 * 1000); // runs every minute
 
   console.log('modmail initialized');
 }

@@ -4940,6 +4940,51 @@ setInterval(async () => {
   } catch (e) { console.warn('review reminder worker error', e); }
 }, 60 * 1000); // runs every minute
 
+// Ticket inactivity worker: auto-close tickets where the student has sent no message within 24 hours
+setInterval(async () => {
+  try {
+    const now = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    for (const [code, ticket] of Object.entries(db.tickets || {})) {
+      try {
+        if (!ticket || !ticket.createdAt) continue;
+        // ticket.messages uses who === 'Student' (hardcoded string) for the regular ticket system.
+        // The modmail system uses who = "User " followed by user tag or ID — intentionally different.
+        const hasStudentMessage = (ticket.messages || []).some(m => m.who === 'Student');
+        if (hasStudentMessage) continue;
+        // Act only after 24 hours have elapsed
+        if (now - ticket.createdAt < TWENTY_FOUR_HOURS) continue;
+        // DM the student
+        try {
+          const student = await client.users.fetch(ticket.studentId).catch(() => null);
+          if (student) {
+            await student.send(
+              `Your tutor enquiry ticket (code: **${code}**, subject: **${ticket.subject || 'N/A'}**) has been automatically deleted because no message was received from you within 24 hours of opening it.\n\nIf you still need help, you are welcome to create a new ticket.`
+            ).catch(() => {});
+          }
+        } catch (e) { console.warn(`ticket inactivity: could not DM student for ${code}`, e); }
+        // Delete the channel
+        try {
+          const ch = await client.channels.fetch(ticket.ticketChannelId).catch(() => null);
+          if (ch) {
+            await ch.send('This ticket has been automatically closed due to inactivity (no message received within 24 hours).').catch(() => {});
+            await ch.delete('Auto-closed: no student message within 24 hours').catch(async (err) => {
+              console.warn(`ticket inactivity: channel delete failed for ${code}`, err);
+              try { await ch.permissionOverwrites.edit(ticket.studentId, { ViewChannel: false, SendMessages: false }).catch(() => {}); } catch (ee) {}
+            });
+          }
+        } catch (e) { console.warn(`ticket inactivity: channel cleanup failed for ${code}`, e); }
+        // Remove from db
+        delete db.tickets[code];
+        saveDB();
+      } catch (e) {
+        console.warn(`ticket inactivity worker: error for ticket ${code}`, e);
+        try { notifyStaffError(e, `ticket inactivity worker ${code}`); } catch (err) {}
+      }
+    }
+  } catch (e) { console.warn('ticket inactivity worker error', e); }
+}, 60 * 1000); // runs every minute
+
 client.login(BOT_TOKEN).catch(err => {
   console.error('login failed', err);
   try { notifyStaffError(err, 'client.login'); } catch (e) { console.warn('notify failed login', e); }
