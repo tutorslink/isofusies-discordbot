@@ -1,5 +1,5 @@
 {
-  "nextTicketId": 44,
+  "nextTicketId": 45,
   "subjects": [
     "IGCSE/GCSE Accounting",
     "AS/AL Maths",
@@ -279,13 +279,14 @@
     "984470340149338182": 1772996911978,
     "915423475294961734": 1773056635879,
     "817046548851720202": 1773081982832,
-    "916882216481615922": 1773504366536
+    "916882216481615922": 1773504366536,
+    "1120097795945267256": 1773605273063
   },
   "sticky": {
     "title": "Looking for *your* subject tutor in *this* crowd?",
     "body": "Try smashing that search icon, and type *only* your subject name.\nAnd you're gonna get all the available tutors for that subject. For all levels.",
     "color": "#fffff",
-    "messageId": "1482143159109554358"
+    "messageId": "1482954273183498351"
   },
   "createAds": {
     "1445552859272839381": {
@@ -1122,8 +1123,8 @@
       "lastBump": 1768549507251
     },
     "873095080938975232": {
-      "count": 241,
-      "lastBump": 1773497568731
+      "count": 249,
+      "lastBump": 1773663520714
     },
     "1306942453479374889": {
       "count": 27,
@@ -1154,8 +1155,8 @@
       "lastBump": 1771680390423
     },
     "984470340149338182": {
-      "count": 43,
-      "lastBump": 1773521236069
+      "count": 48,
+      "lastBump": 1773632384025
     }
   },
   "_modmail_helpers": {},
@@ -1170,11 +1171,14 @@
       "935724860976562187": {
         "legacy": "1463867057534795849"
       },
-      "1101762731666853888": {
-        "tutor_application": "1480384956051099809"
-      },
       "817046548851720202": {
         "tutor_application": "1480638257778921473"
+      },
+      "1310640458833068065": {
+        "tutor_application": "1482508399697596527"
+      },
+      "709859789013909535": {
+        "tutor_application": "1482618658483343401"
       }
     },
     "byChannel": {
@@ -1232,70 +1236,6 @@
         "stickyMessageId": "1445545482440151142",
         "dmControlMessageId": "1446168557292359742"
       },
-      "1480384956051099809": {
-        "id": 24,
-        "userId": "1101762731666853888",
-        "channelId": "1480384956051099809",
-        "createdAt": 1773021677877,
-        "anonymousMods": false,
-        "messages": [
-          {
-            "who": "User 1101762731666853888",
-            "at": 1773021665557,
-            "text": "Hi i wanna apply as a tutor for computer science olevels and ASlevels",
-            "attachments": []
-          },
-          {
-            "who": "Staff isofusie",
-            "at": 1773022333173,
-            "text": "Hi there, you can fill in thus application form,\nhttps://forms.gle/P2yJfsaQx1buaYhQ8",
-            "attachments": []
-          },
-          {
-            "who": "Staff isofusie",
-            "at": 1773022340062,
-            "text": "If you have any questions you can ask them herr",
-            "attachments": []
-          },
-          {
-            "who": "User shaarif69",
-            "at": 1773024083831,
-            "text": "It is not letting me upload an image of my academic results",
-            "attachments": []
-          },
-          {
-            "who": "User shaarif69",
-            "at": 1773024103811,
-            "text": "Nor is there an option to upload a video",
-            "attachments": []
-          },
-          {
-            "who": "Staff isofusie",
-            "at": 1773024999250,
-            "text": ". That's concerning\nCan you share them here directly?",
-            "attachments": []
-          },
-          {
-            "who": "Staff isofusie",
-            "at": 1773025283368,
-            "text": "As for the video, it's supposed to be shared as a link\nTo Google drive or YouTube or any other software.\nThere is an option to attach a photo (by adding it from Google drive or your device) but if there's issues then you can directly send it here it's perfectly alright",
-            "attachments": []
-          },
-          {
-            "who": "Staff isofusie",
-            "at": 1773150863106,
-            "text": "Looking forward to it!",
-            "attachments": []
-          }
-        ],
-        "lastPingAt": 1773021725861,
-        "stickyMessageId": "1480384964423061574",
-        "dmControlMessageId": "1480384961805815858",
-        "purpose": "tutor_application",
-        "purposeLabel": "Wish to apply as a tutor",
-        "letter": "A",
-        "shortId": "24A"
-      },
       "1480638257778921473": {
         "id": 26,
         "userId": "817046548851720202",
@@ -1323,6 +1263,218 @@
         "purposeLabel": "Wish to apply as a tutor",
         "letter": "A",
         "shortId": "26A"
+      },
+      "1482508399697596527": {
+        "id": 35,
+        "userId": "1310640458833068065",
+        "channelId": "1482508399697596527",
+        "createdAt": 1773527946368,
+        "anonymousMods": false,
+        "messages": [
+          {
+            "who": "User 1310640458833068065",
+            "at": 1773527940462,
+            "text": "Hi",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773528030405,
+            "text": "Hello there, you can fill this form\nif you have any questions you can ask them here\nhttps://forms.gle/P2yJfsaQx1buaYhQ8\nLooking forward to having you as a tutor",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1773528062127,
+            "text": "=OMG I WAS JUST ABOUT TO THT UGH",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773528090993,
+            "text": "=im gonna cry",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1773528107198,
+            "text": "=wut did u do know",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1773528146017,
+            "text": "=ur always about to cry atp I think u should just cry for a few hrs then u will br okay",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773528162573,
+            "text": "=ya but i cant cuz im too sigma",
+            "attachments": []
+          }
+        ],
+        "lastPingAt": 1773527950659,
+        "stickyMessageId": "1482508408912347308",
+        "dmControlMessageId": "1482508405657567434",
+        "purpose": "tutor_application",
+        "purposeLabel": "Wish to apply as a tutor",
+        "letter": "A",
+        "shortId": "35A"
+      },
+      "1482618658483343401": {
+        "id": 36,
+        "userId": "709859789013909535",
+        "channelId": "1482618658483343401",
+        "createdAt": 1773554234039,
+        "anonymousMods": false,
+        "messages": [
+          {
+            "who": "User 709859789013909535",
+            "at": 1773554221486,
+            "text": "Dear Application Team, \n\nI'm an experienced tutor offering help in math and science for middle school, high school, and university students.\n\nAbout me:\n• IB Graduate \n• 6 years of tutoring experience\n• 3rd-year Biomedical Sciences student\n• Experienced in working with students from many levels, from test preparation to general building of fundamentals\n\nI focus on explaining concepts in a clear manner to students, helping them actually understand the material as opposed to memorizing. As well as this, I keep up with them and am open to help outside of sessions. I've helped students significantly improve their grades (very often from 60s to 90s). \n\nMy subjects are: \n\n• Mathematics\n-Middle School\n-AP / IB SL& HL\n-Calculus I, II, & III\n-Statistics I & II\n\n• Chemistry\n-Middle School\n-AP / IB SL & HL\n-General Chemistry I & II\n-Organic Chemistry I & II\n-Biochemistry I & II\n\n• Biology\n-Middle School\n-AP / IB SL & HL\n-General Biology I & II\n-Cell Biology I & II \n-Molecular Biology\n-Genetics, etc.\n\n• Physics \n-Middle School\n-AP & IB SL/HL\n-General Physics I & II\n-Medical Physics I & II\n-Biophysics I & II\n\nI would love to help contribute to Tutorshelp!",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773578194126,
+            "text": "=I lowkey feel bad when tutors sound so professional cuz Ik it'd be hard to get them students... 🥀",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773578340256,
+            "text": "Hello there, that's amazing!\nYou can fill this form, what you said now has impressed me enough, but we just need the form for some days. \nhttps://forms.gle/P2yJfsaQx1buaYhQ8",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773578355423,
+            "text": "For some data*",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1773582337235,
+            "text": "=Lmao fr this guy sounds so professional",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773582394525,
+            "text": "=what are those things after Ap ib",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1773582950906,
+            "text": "= HL means higher level and SL means standard level so he has done those subjects in IB of both levels damn bros a genius",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773585946305,
+            "text": "😮 wow so its IB and probably a levels and igcse and middle school too ok bros carrying the entire education system",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773585956730,
+            "text": "=FUK THAT GOT SENT",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773585959427,
+            "text": "=OMG",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773585968689,
+            "text": "=I TYPED O AFTER THE EQUAL SIGN BRO",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1773585977749,
+            "text": "=LOL I CANT BELIVE *U* DID THT",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1773585985943,
+            "text": "GANT U DELETE IT OR SMTH",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1773585997064,
+            "text": "=OH SHT",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773586029786,
+            "text": "Im assuming you will be teaching A levels too? since you are teaching IB.",
+            "attachments": []
+          },
+          {
+            "who": "User mic6254",
+            "at": 1773589614664,
+            "text": "Hi, yeah! I've taught A levels before since IB is pretty similar (though more advanced); same as AP. \n\nOh and, for IB, the HL version of a subject covers everything in the SL version + more - so taking HL means you can teach both. \n\nI'll get back to you guys with the form, I appreciate all the communication!",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773593075462,
+            "text": "Alright that sounds very amazing, really looking forward to having you as a tutor here. Hopefully we can connect you with some amazing students soon!",
+            "attachments": []
+          },
+          {
+            "who": "Staff highonwater._.",
+            "at": 1773593242511,
+            "text": "=I lowk hope we didn't scare him away",
+            "attachments": []
+          },
+          {
+            "who": "User mic6254",
+            "at": 1773604544740,
+            "text": "Hey! Just filling out the form, but there are a few things I can't provide within it as context. \n\nThe grades in the IBDP I attached are good (not great, not bad) - They significantly improved during university; I can supply those transcripts if you'd like. \n\nAnother thing includes the courses taught, which are largely from the knowledge I've amassed during university (I didn't take Physics in IB, for example, but I did in university and tutored IB Physics HL as well as the mentioned physics courses in my introduction statement)\n\nAlso, I added only IB Biology as my course because of how the form is designed, but as you know, I'm perfectly open and able to tutor other courses.\n\nLastly, the video might be hard to get as I never record tutoring sessions for reasons of privacy (for the student). I'll probably have to record it myself, but if there's anything I can send in aside from a recording I would appreciate it haha.\n\nThank you for your time in reading this though!",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773605431303,
+            "text": "Okay i trust you with all that and were okay with it. just regarding the video.. is there any other way we can judge how well you teach?",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773605458752,
+            "text": "perhaps student testimonials, or anything of the sort...",
+            "attachments": []
+          },
+          {
+            "who": "User mic6254",
+            "at": 1773610535565,
+            "text": "No worries! I do have testimonials, but I'll record a quick video covering a topic of my choice if that's fine. \n\nIt will be kinda scuffed since I'm basically talking to myself and a lot of my tutoring relies on interactions and questions lol",
+            "attachments": []
+          },
+          {
+            "who": "Staff isofusie",
+            "at": 1773610558572,
+            "text": "yup totally makes sense, looking forward to the application!",
+            "attachments": []
+          }
+        ],
+        "lastPingAt": 0,
+        "stickyMessageId": "1482618668276776982",
+        "dmControlMessageId": "1482618664464416800",
+        "purpose": "tutor_application",
+        "purposeLabel": "Wish to apply as a tutor",
+        "letter": "A",
+        "shortId": "36A"
       }
     },
     "pending": {
@@ -1408,7 +1560,7 @@
       }
     },
     "nextId": 66,
-    "nextId_A": 35,
+    "nextId_A": 38,
     "nextId_C": 3,
     "nextId_S": 4,
     "nextId_P": 1
